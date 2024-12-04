@@ -1,0 +1,86 @@
+body {
+    font-family: 'Roboto', sans-serif;
+    background-color: #f4f0fb; /* Soft lavender background */
+    color: #2d2a32; /* Dark neutral text */
+    margin: 0;
+    padding: 0;
+}
+
+h1 {
+    text-align: center;
+    font-size: 2.5rem;
+    color: #6a0dad; /* Deep Purple for titles */
+    margin-top: 20px;
+    font-weight: bold;
+}
+
+.gr-textbox, .gr-dropdown {
+    border: 1px solid #cdb4db; /* Soft lavender border */
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 1rem;
+    background-color: #fff; /* White input fields */
+    box-shadow: 0px 2px 6px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+}
+
+.gr-textbox:focus, .gr-dropdown:focus {
+    border-color: #6a0dad; /* Deep Purple on focus */
+    box-shadow: 0px 0px 5px #6a0dad;
+}
+
+.gr-button {
+    background-color: #6a0dad; /* Deep Purple button */
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 25px;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0px 2px 6px rgba(106, 13, 173, 0.3);
+}
+
+.gr-button:hover {
+    background-color: #580d8c; /* Slightly darker purple on hover */
+    box-shadow: 0px 3px 8px rgba(88, 13, 140, 0.5);
+}
+
+.gr-chatbot {
+    background-color: #fff; /* White chat container */
+    border: 1px solid #cdb4db; /* Soft lavender border */
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0px 2px 6px rgba(0, 0, 0, 0.1);
+    font-size: 0.95rem;
+    max-height: 580px; /* Enforce chatbot size */
+    overflow-y: auto;
+}
+
+.gr-accordion {
+    background-color: #e6daf4; /* Soft lavender accordion background */
+    border: 1px solid #cdb4db;
+    border-radius: 8px;
+    padding: 15px;
+    box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.gr-row {
+    margin: 10px 0;
+}
+
+.gr-column {
+    margin: 5px;
+}
+
+.gr-markdown {
+    font-size: 1rem;
+    color: #4a0a7a; /* Dark purple for Markdown text */
+}
+
+.gr-slider {
+    --track-color: #cdb4db; /* Lavender slider track */
+    --thumb-color: #6a0dad; /* Deep Purple slider handle */
+    --thumb-hover-color: #580d8c; /* Darker Purple on hover */
+}
