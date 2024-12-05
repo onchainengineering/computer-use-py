@@ -11,14 +11,14 @@ from datetime import datetime
 from enum import StrEnum
 from functools import partial
 from pathlib import Path
-from typing import cast, Dict, AsyncGenerator
+from typing import cast, Dict, AsyncGenerator, Generator
 
 import gradio as gr
 from anthropic import APIResponse
 from anthropic.types import TextBlock
 from anthropic.types.beta import BetaMessage, BetaTextBlock, BetaToolUseBlock
 from anthropic.types.tool_use_block import ToolUseBlock
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from threading import Thread
 import uvicorn
@@ -26,6 +26,7 @@ import uvicorn
 from screeninfo import get_monitors
 from fastapi.middleware.cors import CORSMiddleware
 import nest_asyncio
+from fastapi.responses import StreamingResponse
 
 nest_asyncio.apply()
 
@@ -49,6 +50,7 @@ WARNING_TEXT = "⚠️ Security Alert: Never provide access to sensitive account
 
 SELECTED_SCREEN_INDEX = None
 SCREEN_NAMES = None
+ANTHROPIC_KEY = "*************************FILL THE API KEY************************"
 
 
 class Sender(StrEnum):
@@ -63,7 +65,7 @@ def setup_state(state):
     if "api_key" not in state:
         # Try to load API key from file first, then environment
         state[
-            "api_key"] = "*************************** REPLACE THIS STRING WITH ACTUAL ANTHROPIC API KEY **********************************"
+            "api_key"] = ANTHROPIC_KEY
         if not state["api_key"]:
             print("API key not found. Please set it in the environment or storage.")
     if "provider" not in state:
@@ -199,15 +201,20 @@ def process_input(user_input, state):
         }
     )
 
+    yield yield_message(state), state
+
+    # for message in yield_message(state):
+    #     yield json.dumps(message), state
+
     # for message in yield_message(state):
     #     yield message, state
 
-    results = []
-    for message in yield_message(state):
-        # Convert message or other non-serializable parts to JSON-friendly structures
-        results.append(message)
-
-    return results, state
+    # results = []
+    # for message in yield_message(state):
+    #     # Convert message or other non-serializable parts to JSON-friendly structures
+    #     results.append(message)
+    #
+    # return results, state
 
 
 def accumulate_messages(*args, **kwargs):
@@ -402,28 +409,52 @@ app.add_middleware(
 )
 
 
-# API endpoint to handle input from React frontend
-@app.post("/api/process-input")
+@app.post("/api/process-input", response_class=StreamingResponse)
 async def process_input_api(request: Request):
     data = await request.json()
     user_input = data.get("user_input")
-    api_key = data.get("api_key")
-
-    # Create the state and process anput
-    state = {}
-    setup_state(state)
-    if api_key:
-        state["api_key"] = api_key
+    api_key = ANTHROPIC_KEY
 
     print("Processing input...", user_input)
-    responses, updated_state = process_input(user_input, state)
 
-    # results = []
-    # for res in responses:
-    #     results.append(res)
+    # Create the state and process input
+    state = {}
+    setup_state(state)
 
-    # Return the collected responses as JSON
-    return JSONResponse(content={"messages": responses[0]})
+    # Ensure the state is properly initialized
+    state["api_key"] = api_key
+
+    # Append the user input to the messages in the state
+    state["messages"].append(
+        {
+            "role": Sender.USER,
+            "content": [TextBlock(type="text", text=user_input)],
+        }
+    )
+
+    # Call the sampling loop and yield messages
+    def message_generator() -> Generator:
+        try:
+            # Use accumulate_messages to yield individual messages
+            for message in accumulate_messages(
+                    system_prompt_suffix=state["custom_system_prompt"],
+                    model=state["model"],
+                    provider=state["provider"],
+                    messages=state["messages"],
+                    output_callback=partial(_render_message, Sender.BOT, state=state),
+                    tool_output_callback=partial(_tool_output_callback, tool_state=state["tools"]),
+                    api_response_callback=partial(_api_response_callback, response_state=state["responses"]),
+                    api_key=state["api_key"],
+                    only_n_most_recent_images=state["only_n_most_recent_images"],
+            ):
+                # Ensure each message is in the proper SSE format
+                yield f"data: {message}\n\n"
+        except Exception as e:
+            # Error handling
+            yield f"data: Error: {str(e)}\n\n"
+
+    # Return the streaming response in the correct content type
+    return StreamingResponse(message_generator(), media_type="text/event-stream")
 
 
 # def process_input(user_input, state):
@@ -447,7 +478,7 @@ def run_gradio():
         inputs=[gr.Textbox(label="Enter Input"), gr.State()],
         outputs=[gr.Textbox(), gr.State()]
     )
-    demo.launch(share=True, server_name="localhost", server_port=7860)
+    demo.launch(share=True, server_name="localhost", server_port=7861)
 
 
 def run_fastapi():
