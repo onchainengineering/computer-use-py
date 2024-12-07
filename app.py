@@ -485,7 +485,7 @@ def run_gradio():
 
 
 def run_fastapi():
-    uvicorn.run("app:app", host="localhost", port=8002)
+    uvicorn.run("app:app", host="localhost", port=8001)
 
 
 if __name__ == "__main__":
