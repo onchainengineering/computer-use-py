@@ -224,12 +224,13 @@ def accumulate_messages(*args, **kwargs):
     accumulated_messages = []
     global SELECTED_SCREEN_INDEX
     print(f"Selected screen: {SELECTED_SCREEN_INDEX}")
-    for message in sampling_loop_sync(*args, selected_screen=SELECTED_SCREEN_INDEX, **kwargs):
+    messages = sampling_loop_sync(*args, selected_screen=SELECTED_SCREEN_INDEX, **kwargs)
+    for message in messages:
         # Check if the message is already in the accumulated messages
         if message not in accumulated_messages:
             accumulated_messages.append(message)
-            # Yield the accumulated messages as a list
-            yield accumulated_messages
+            # Yield the accumulated messages as a list to check the uniqueness of the mess
+            yield message
 
 
 def yield_message(state):
@@ -413,11 +414,14 @@ app.add_middleware(
 async def process_input_api(request: Request):
     data = await request.json()
     user_input = data.get("user_input")
-    api_key = ANTHROPIC_KEY
+    api_key = request.headers.get("anthropic-api-key")
+
+    if not api_key:
+        raise HTTPException(status_code=401, detail="API Key missing")
 
     print("Processing input...", user_input)
 
-    # Create the state and process input
+    # Create the state and process inputanthr=
     state = {}
     setup_state(state)
 
@@ -450,7 +454,6 @@ async def process_input_api(request: Request):
                 # Ensure each message is in the proper SSE format
                 yield f"data: {message}\n\n"
         except Exception as e:
-            # Error handling
             yield f"data: Error: {str(e)}\n\n"
 
     # Return the streaming response in the correct content type
@@ -482,7 +485,7 @@ def run_gradio():
 
 
 def run_fastapi():
-    uvicorn.run("app:app", host="localhost", port=8001)
+    uvicorn.run("app:app", host="localhost", port=8002)
 
 
 if __name__ == "__main__":
