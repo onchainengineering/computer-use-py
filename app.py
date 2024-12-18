@@ -18,7 +18,7 @@ from anthropic import APIResponse
 from anthropic.types import TextBlock
 from anthropic.types.beta import BetaMessage, BetaTextBlock, BetaToolUseBlock
 from anthropic.types.tool_use_block import ToolUseBlock
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Form
 from fastapi.responses import JSONResponse
 from threading import Thread
 import uvicorn
@@ -27,6 +27,7 @@ from screeninfo import get_monitors
 from fastapi.middleware.cors import CORSMiddleware
 import nest_asyncio
 from fastapi.responses import StreamingResponse
+from openai import OpenAI
 
 nest_asyncio.apply()
 
@@ -459,6 +460,101 @@ async def process_input_api(request: Request):
     # Return the streaming response in the correct content type
     return StreamingResponse(message_generator(), media_type="text/event-stream")
 
+# @app.post("/api/process-input-using-model", response_class=StreamingResponse)
+# async def process_input_api_using_model(request: Request):
+openai_client = OpenAI(api_key="***************************************************************")
+@app.post("/api/process_input_api_using_model", response_class=StreamingResponse)
+async def process_input_loop(user_input: str = Form(...)):
+    async def response_generator():
+        try:
+            # Initialize the conversation log
+            conversation_log = []
+
+            # Step 1: Initialize the state and get the initial breakdown from OpenAI
+            openai_response = openai_client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "Break down the user's input into actionable steps."},
+                    {"role": "user", "content": user_input},
+                ],
+                max_tokens=500,
+            )
+
+            current_prompt = openai_response.choices[0].message.content.strip()
+            conversation_log.append({"role": "OpenAI", "content": current_prompt})
+            yield f"data: OpenAI Processed Input:\n{current_prompt}\n\n"
+
+            state = {}
+            setup_state(state)
+            state["api_key"] = "**********************************************************************"
+
+            while True:
+                # Step 2: Send the current prompt to Anthropic and stream the response
+                state["messages"].append(
+                    {
+                        "role": Sender.USER,
+                        "content": [TextBlock(type="text", text=current_prompt)],
+                    }
+                )
+
+                try:
+                    for message in accumulate_messages(
+                            system_prompt_suffix=state["custom_system_prompt"],
+                            model=state["model"],
+                            provider=state["provider"],
+                            messages=state["messages"],
+                            output_callback=partial(_render_message, Sender.BOT, state=state),
+                            tool_output_callback=partial(_tool_output_callback, tool_state=state["tools"]),
+                            api_response_callback=partial(_api_response_callback, response_state=state["responses"]),
+                            api_key=state["api_key"],
+                            only_n_most_recent_images=state["only_n_most_recent_images"],
+                    ):
+                        conversation_log.append({"role": "Anthropic", "content": message})
+                        yield f"data: Anthropic Response: {message}\n\n"
+
+                except Exception as e:
+                    error_message = f"Error from Anthropic: {str(e)}"
+                    conversation_log.append({"role": "Anthropic", "content": error_message})
+                    yield f"data: {error_message}\n\n"
+                    break
+
+                # Step 3: Ask OpenAI if further action is needed
+                openai_followup = openai_client.chat.completions.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": "Based on the response, determine if more action is needed. If yes, provide the next prompt. If no, state 'FINAL RESPONSE'."},
+                        {"role": "user", "content": f"Anthropic response:\n{message}"},
+                    ],
+                    max_tokens=200,
+                )
+
+                followup_content = openai_followup.choices[0].message.content.strip()
+                conversation_log.append({"role": "OpenAI", "content": followup_content})
+                yield f"data: OpenAI Follow-Up:\n{followup_content}\n\n"
+
+                # Print the conversation log to the console
+                print(json.dumps({
+                    "conversation": conversation_log
+                }, indent=2))
+
+                # Check if OpenAI says it's the final response
+                if "FINAL RESPONSE" in followup_content.upper():
+                    yield f"data: Conversation closed by OpenAI.\n\n"
+                    break
+
+                # Update the prompt for the next loop iteration
+                current_prompt = followup_content
+
+        except Exception as e:
+            error_message = f"Error: {str(e)}"
+            conversation_log.append({"role": "System", "content": error_message})
+            print(json.dumps({
+                "timestamp": str(datetime.datetime.now()),
+                "conversation": conversation_log
+            }, indent=2))
+            yield f"data: {error_message}\n\n"
+
+    return StreamingResponse(response_generator(), media_type="text/event-stream")
 
 # def process_input(user_input, state):
 #     if state is None:
